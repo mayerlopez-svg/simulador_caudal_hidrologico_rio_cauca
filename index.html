@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador de Caudal HidrolÃ³gico - RÃ­o Cauca</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+        }
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+        .gradient-text {
+            background: linear-gradient(135deg, #38bdf8, #3b82f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        /* Custom scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+    </style>
+</head>
+<body class="min-h-screen pb-10">
+
+    <header class="border-b border-slate-800 bg-slate-900/80 sticky top-0 z-50 backdrop-blur-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2.5 bg-blue-600/20 text-blue-400 rounded-xl border border-blue-500/30">
+                    <i class="fa-solid font-bold fa-water text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold text-white tracking-wide">Simulador HidrolÃ³gico - RÃ­o Cauca</h1>
+                    <p class="text-xs text-slate-400">ModelaciÃ³n DinÃ¡mica de Caudal & IntegraciÃ³n NumÃ©rica (EstaciÃ³n Juanchito / Valle)</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 text-xs">
+                <span class="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                    Estado: Normal Monitoreado
+                </span>
+                <span class="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700">
+                    <i class="fa-solid fa-clock text-blue-400 mr-1"></i> Ventana: 36 Horas
+                </span>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 space-y-6">
+
+        <section class="glass-panel p-5 rounded-2xl">
+            <div class="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 mb-4">
+                <div class="flex items-center gap-3">
+                    <button id="playBtn" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold rounded-xl transition flex items-center gap-2 shadow-lg shadow-blue-600/30">
+                        <i class="fa-solid fa-play" id="playIcon"></i>
+                        <span id="playText">Iniciar SimulaciÃ³n</span>
+                    </button>
+                    <button id="resetBtn" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium rounded-xl border border-slate-700 transition">
+                        <i class="fa-solid fa-rotate-left mr-1"></i> Reiniciar
+                    </button>
+                </div>
+
+                <div class="flex items-center gap-4 flex-1 max-w-xl bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Tiempo (t):</span>
+                    <input type="range" id="timeSlider" min="0" max="36" step="0.1" value="0" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500">
+                    <span id="currentTimeDisplay" class="font-mono text-base font-bold text-blue-400 min-w-[70px] text-right">0.0 h</span>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <label class="text-xs text-slate-400">Escenario:</label>
+                    <select id="scenarioSelect" class="bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-xl px-3 py-2 font-medium focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="baseline">Datos Reales Observados</option>
+                        <option value="flood">+25% Incremento por Tormenta</option>
+                        <option value="drought">-15% ReducciÃ³n Estacional</option>
+                        <option value="pulse">Avenida Torrencial (Pico $t=18$h)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs text-slate-400 border-t border-slate-800/80 pt-3">
+                <div><i class="fa-solid fa-arrow-down-short-wide text-blue-400 mr-1"></i> Caudal MÃ­nimo: <span id="statQMin" class="text-slate-200 font-semibold">-- mÂ³/s</span></div>
+                <div><i class="fa-solid fa-arrow-up-wide-short text-amber-400 mr-1"></i> Caudal MÃ¡ximo: <span id="statQMax" class="text-slate-200 font-semibold">-- mÂ³/s</span></div>
+                <div><i class="fa-solid fa-calculator text-emerald-400 mr-1"></i> Caudal Promedio: <span id="statQAvg" class="text-slate-200 font-semibold">-- mÂ³/s</span></div>
+                <div><i class="fa-solid fa-database text-cyan-400 mr-1"></i> Vol. Acumulado 36h: <span id="statVolTotal" class="text-slate-200 font-semibold">-- HmÂ³</span></div>
+            </div>
+        </section>
+
+        <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- Card 1: Instantaneous Flow Rate -->
+            <div class="glass-panel p-5 rounded-2xl relative overflow-hidden">
+                <div class="absolute -right-2 -bottom-2 opacity-10 text-blue-500">
+                    <i class="fa-solid fa-gauge-high text-7xl"></i>
+                </div>
+                <div class="text-xs font-medium text-slate-400 mb-1">Caudal InstantÃ¡neo $Q(t)$</div>
+                <div class="flex items-baseline gap-2">
+                    <span id="kpiQ" class="text-3xl font-extrabold text-white font-mono">1162.18</span>
+                    <span class="text-sm font-semibold text-blue-400">mÂ³/s</span>
+                </div>
+                <div class="mt-3 flex items-center gap-2 text-xs">
+                    <span id="qTrendBadge" class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
+                        <i class="fa-solid fa-minus text-slate-400 mr-1"></i>0.0 mÂ³/sÂ²
+                    </span>
+                    <span class="text-slate-500">VariaciÃ³n Temporal</span>
+                </div>
+            </div>
+
+            <!-- Card 2: Estimated Water Level -->
+            <div class="glass-panel p-5 rounded-2xl relative overflow-hidden">
+                <div class="absolute -right-2 -bottom-2 opacity-10 text-cyan-500">
+                    <i class="fa-solid fa-water text-7xl"></i>
+                </div>
+                <div class="text-xs font-medium text-slate-400 mb-1">Nivel Estimado del RÃ­o $h(t)$</div>
+                <div class="flex items-baseline gap-2">
+                    <span id="kpiDepth" class="text-3xl font-extrabold text-white font-mono">4.12</span>
+                    <span class="text-sm font-semibold text-cyan-400">m</span>
+                </div>
+                <div class="mt-3 flex items-center text-xs text-slate-400 gap-1">
+                    <i class="fa-solid fa-ruler-vertical text-cyan-400"></i> CalibraciÃ³n Manning ($B=90$m, $n=0.032$)
+                </div>
+            </div>
+
+            <!-- Card 3: Flow Velocity -->
+            <div class="glass-panel p-5 rounded-2xl relative overflow-hidden">
+                <div class="absolute -right-2 -bottom-2 opacity-10 text-emerald-500">
+                    <i class="fa-solid fa-bolt text-7xl"></i>
+                </div>
+                <div class="text-xs font-medium text-slate-400 mb-1">Velocidad Media del Flujo $V(t)$</div>
+                <div class="flex items-baseline gap-2">
+                    <span id="kpiVelocity" class="text-3xl font-extrabold text-white font-mono">3.14</span>
+                    <span class="text-sm font-semibold text-emerald-400">m/s</span>
+                </div>
+                <div class="mt-3 flex items-center text-xs text-slate-400 gap-1">
+                    <i class="fa-solid fa-wind text-emerald-400"></i> RÃ©gimen SubcrÃ­tico ($Fr < 1.0$)
+                </div>
+            </div>
+
+            <!-- Card 4: Integrated Volume -->
+            <div class="glass-panel p-5 rounded-2xl relative overflow-hidden">
+                <div class="absolute -right-2 -bottom-2 opacity-10 text-purple-500">
+                    <i class="fa-solid fa-box-archive text-7xl"></i>
+                </div>
+                <div class="text-xs font-medium text-slate-400 mb-1">Volumen Acumulado hasta $t$</div>
+                <div class="flex items-baseline gap-2">
+                    <span id="kpiVolume" class="text-3xl font-extrabold text-white font-mono">0.00</span>
+                    <span class="text-sm font-semibold text-purple-400">HmÂ³</span>
+                </div>
+                <div class="mt-3 text-xs text-slate-400 flex items-center gap-1">
+                    <i class="fa-solid fa-square-root-variable text-purple-400"></i> IntegraciÃ³n Trapezoidal $\int Q dt$
+                </div>
+            </div>
+        </section>
+
+        <section class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            <!-- Hydrograph Chart (8 cols) -->
+            <div class="lg:col-span-7 glass-panel p-5 rounded-2xl flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h2 class="text-base font-bold text-white flex items-center gap-2">
+                                <i class="fa-chart-line text-blue-400"></i> Hidrograma de Caudal $Q(t)$
+                            </h2>
+                            <p class="text-xs text-slate-400">Puntos medidos e interpolaciÃ³n Spline CÃºbica en las 36 horas</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="flex items-center gap-1 text-[11px] text-blue-400 bg-blue-500/10 px-2 py-1 rounded border border-blue-500/20">
+                                <span class="w-2 h-2 rounded-full bg-blue-500"></span> Curva Simulada
+                            </span>
+                            <span class="flex items-center gap-1 text-[11px] text-amber-400 bg-amber-500/10 px-2 py-1 rounded border border-amber-500/20">
+                                <span class="w-2 h-2 rounded-full bg-amber-400"></span> Datos Adjuntos
+                            </span>
+                        </div>
+                    </div>
+                    <div class="h-[320px] w-full relative">
+                        <canvas id="hydrographCanvas"></canvas>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-slate-800 text-xs text-slate-400 flex flex-wrap justify-between items-center gap-2">
+                    <span><i class="fa-solid fa-circle-info text-blue-400 mr-1"></i> La zona sombreada representa el volumen total discurriendo por el cauce.</span>
+                    <span id="interpolationInfo" class="font-mono text-slate-300">Spline MonÃ³tona Activa</span>
+                </div>
+            </div>
+
+            <!-- River Channel Cross-Section & Dynamic Particle Animation (5 cols) -->
+            <div class="lg:col-span-5 glass-panel p-5 rounded-2xl flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-base font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-water text-cyan-400"></i> SecciÃ³n Transversal y Flujo
+                        </h2>
+                        <span class="text-xs bg-slate-800 text-cyan-300 px-2 py-0.5 rounded border border-slate-700">Canal RÃ­o Cauca</span>
+                    </div>
+                    <p class="text-xs text-slate-400 mb-3">SimulaciÃ³n visual de la lÃ¡mina de agua y partÃ­culas a velocidad $V(t)$</p>
+
+                    <div class="relative w-full h-[280px] bg-slate-900/90 rounded-xl overflow-hidden border border-slate-800">
+                        <canvas id="riverSimulationCanvas" class="w-full h-full block"></canvas>
+                        
+                        <!-- Overlay Water Metrics -->
+                        <div class="absolute bottom-2 left-2 right-2 flex justify-between items-center text-[11px] bg-slate-950/80 p-2 rounded-lg backdrop-blur border border-slate-800">
+                            <span class="text-slate-300">Ancho ($B$): <strong class="text-white">90.0 m</strong></span>
+                            <span class="text-slate-300">Ãrea Mojada ($A$): <strong id="canvasArea" class="text-cyan-400">-- mÂ²</strong></span>
+                            <span class="text-slate-300">PerÃ­metro ($P$): <strong id="canvasPerimeter" class="text-emerald-400">-- m</strong></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-slate-800 grid grid-cols-2 gap-2 text-xs">
+                    <div class="bg-slate-900/50 p-2 rounded-lg border border-slate-800/80">
+                        <span class="text-slate-400 block">Pendiente de Cauce ($S$):</span>
+                        <span class="text-slate-200 font-bold font-mono">0.0003 m/m</span>
+                    </div>
+                    <div class="bg-slate-900/50 p-2 rounded-lg border border-slate-800/80">
+                        <span class="text-slate-400 block">Rugosidad Manning ($n$):</span>
+                        <span class="text-slate-200 font-bold font-mono">0.032 (Grava/Canto)</span>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+        <section class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            <!-- Raw Data & Interpolation Table (7 cols) -->
+            <div class="lg:col-span-7 glass-panel p-5 rounded-2xl">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 class="text-base font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-table text-amber-400"></i> Registros Observados e IntegraciÃ³n Trapezoidal
+                        </h2>
+                        <p class="text-xs text-slate-400">Tabla de datos suministrados con cÃ¡lculo del volumen por tramo</p>
+                    </div>
+                    <button id="exportCsvBtn" class="text-xs px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-file-csv text-emerald-400"></i> Exportar CSV
+                    </button>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs text-slate-300">
+                        <thead class="bg-slate-900/80 text-slate-400 uppercase tracking-wider text-[11px] border-b border-slate-800">
+                            <tr>
+                                <th class="p-3">Tiempo $t$ (h)</th>
+                                <th class="p-3">Caudal $Q$ (mÂ³/s)</th>
+                                <th class="p-3">$\Delta t$ (s)</th>
+                                <th class="p-3">Volumen Tramo ($m^3$)</th>
+                                <th class="p-3">Volumen Acum. ($Hm^3$)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dataTableBody" class="divide-y divide-slate-800/60 font-mono">
+                            <!-- Populated dynamically via JS -->
+                        </tbody>
+                        <tfoot class="bg-slate-900/90 font-bold text-white border-t-2 border-slate-700">
+                            <tr>
+                                <td class="p-3">Total / Resumen</td>
+                                <td class="p-3 text-blue-400" id="tableAvgQ">-- mÂ³/s</td>
+                                <td class="p-3">129,600 s</td>
+                                <td class="p-3 text-purple-400" id="tableTotalM3">-- mÂ³</td>
+                                <td class="p-3 text-emerald-400" id="tableTotalHm3">-- HmÂ³</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Hydrological Context & Manning Hydraulic Parameters (5 cols) -->
+            <div class="lg:col-span-5 glass-panel p-5 rounded-2xl flex flex-col justify-between">
+                <div>
+                    <h2 class="text-base font-bold text-white mb-2 flex items-center gap-2">
+                        <i class="fa-solid fa-sliders text-emerald-400"></i> ParÃ¡metros del Canal del RÃ­o
+                    </h2>
+                    <p class="text-xs text-slate-400 mb-4">Ajuste interactivo de la geometrÃ­a hidrÃ¡ulica (EcuaciÃ³n de Manning)</p>
+
+                    <div class="space-y-4 text-xs">
+                        <div>
+                            <div class="flex justify-between mb-1 text-slate-300">
+                                <span>Ancho de Solera / Cauce ($B$):</span>
+                                <span id="paramBVal" class="font-bold text-blue-400">90 m</span>
+                            </div>
+                            <input type="range" id="paramB" min="50" max="150" value="90" step="5" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500">
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between mb-1 text-slate-300">
+                                <span>Coeficiente de Rugosidad ($n$):</span>
+                                <span id="paramNVal" class="font-bold text-emerald-400">0.032</span>
+                            </div>
+                            <input type="range" id="paramN" min="0.020" max="0.065" value="0.032" step="0.001" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500">
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between mb-1 text-slate-300">
+                                <span>Pendiente Longitudinal ($S$):</span>
+                                <span id="paramSVal" class="font-bold text-amber-400">0.0003 m/m</span>
+                            </div>
+                            <input type="range" id="paramS" min="0.0001" max="0.0010" value="0.0003" step="0.00005" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-5 p-3.5 bg-slate-900/80 rounded-xl border border-slate-800 text-xs space-y-2">
+                    <div class="font-bold text-slate-200 flex items-center gap-1.5">
+                        <i class="fa-solid fa-map-pin text-red-400"></i> Contexto HidrolÃ³gico RÃ­o Cauca
+                    </div>
+                    <p class="text-slate-400 leading-relaxed text-[11.5px]">
+                        Los caudales (~1100 a 1265 mÂ³/s) corresponden a un rÃ©gimen medio-alto en el valle geogrÃ¡fico del RÃ­o Cauca (Cali / Juanchito). Un volumen acumulado superior a <strong>150 HmÂ³</strong> en 36 horas refleja la alta capacidad reguladora de la cuenca.
+                    </p>
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <script>
+        // Provided dataset
+        const rawData = [
+            { t: 0,  q: 1162.18 },
+            { t: 6,  q: 1173.05 },
+            { t: 12, q: 1108.83 },
+            { t: 24, q: 1213.33 },
+            { t: 30, q: 1265.22 },
+            { t: 36, q: 1228.10 }
+        ];
+
+        // Hydraulic parameters defaults
+        let hydraulicParams = {
+            B: 90,     // Channel width (meters)
+            n: 0.032,  // Manning roughness
+            S: 0.0003  // Longitudinal slope
+        };
+
+        let currentScenario = 'baseline';
+        let currentTime = 0;
+        let isPlaying = false;
+        let animationFrameId = null;
+        let playbackSpeed = 1.0; // hours per step multiplier
+
+        // Particles for canvas simulation
+        let particles = [];
+        const numParticles = 80;
+
+        function getActiveData() {
+            return rawData.map(d => {
+                let factor = 1.0;
+                let offset = 0;
+                if (currentScenario === 'flood') factor = 1.25;
+                if (currentScenario === 'drought') factor = 0.85;
+                
+                let qVal = d.q * factor;
+                
+                if (currentScenario === 'pulse') {
+                    // Add a synthetic pulse peaked at t=18
+                    const pulse = 250 * Math.exp(-Math.pow(d.t - 18, 2) / 36);
+                    qVal += pulse;
+                }
+                return { t: d.t, q: qVal };
+            });
+        }
+
+        // Hermite Monotone Cubic Spline to avoid overshoots
+        function createSpline(data) {
+            const x = data.map(d => d.t);
+            const y = data.map(d => d.q);
+            const n = x.length;
+
+            const dx = [];
+            const dy = [];
+            const ms = [];
+
+            for (let i = 0; i < n - 1; i++) {
+                dx.push(x[i + 1] - x[i]);
+                dy.push(y[i + 1] - y[i]);
+                ms.push(dy[i] / dx[i]);
+            }
+
+            const c1s = [ms[0]];
+            for (let i = 0; i < ms.length - 1; i++) {
+                const m = ms[i];
+                const nextM = ms[i + 1];
+                if (m * nextM <= 0) {
+                    c1s.push(0);
+                } else {
+                    const commondx = dx[i] + dx[i + 1];
+                    c1s.push((3 * commondx) / ((commondx + dx[i + 1]) / m + (commondx + dx[i]) / nextM));
+                }
+            }
+            c1s.push(ms[ms.length - 1]);
+
+            return function(tVal) {
+                if (tVal <= x[0]) return y[0];
+                if (tVal >= x[n - 1]) return y[n - 1];
+
+                let i = 0;
+                while (i < x.length - 1 && x[i + 1] < tVal) {
+                    i++;
+                }
+
+                const h = dx[i];
+                const diff = tVal - x[i];
+                const t = diff / h;
+                const t2 = t * t;
+                const t3 = t2 * t;
+
+                const h00 = 2 * t3 - 3 * t2 + 1;
+                const h10 = t3 - 2 * t2 + t;
+                const h01 = -2 * t3 + 3 * t2;
+                const h11 = t3 - t2;
+
+                return h00 * y[i] + h10 * h * c1s[i] + h01 * y[i + 1] + h11 * h * c1s[i + 1];
+            };
+        }
+
+        // Solves Manning Equation: Q = (1/n) * A * R^(2/3) * S^(1/2) for rectangular channel
+        // A = B * h, P = B + 2h, R = (B * h) / (B + 2h)
+        function solveDepth(Q, B, n, S) {
+            let h = 3.0; // initial guess
+            const k = (n * Q) / Math.sqrt(S); // A * R^(2/3) = k
+
+            // Newton-Raphson iteration
+            for (let iter = 0; iter < 15; iter++) {
+                const A = B * h;
+                const P = B + 2 * h;
+                const R = A / P;
+                const R_23 = Math.pow(R, 2/3);
+                
+                const f = A * R_23 - k;
+                if (Math.abs(f) < 1e-4) break;
+
+                // Derivative df/dh
+                const dA = B;
+                const dP = 2;
+                const dR = (B * P - A * dP) / (P * P);
+                const df = dA * R_23 + A * (2/3) * Math.pow(R, -1/3) * dR;
+
+                h = h - f / df;
+                if (h <= 0.1) h = 0.1;
+            }
+            return h;
+        }
+
+        function calculateCumulativeVolume(tTarget) {
+            const activeData = getActiveData();
+            const spline = createSpline(activeData);
+
+            let totalVolSeconds = 0; // mÂ³
+            const step = 0.05; // small time steps in hours
+
+            for (let t = 0; t < tTarget; t += step) {
+                const q1 = spline(t);
+                const q2 = spline(Math.min(t + step, tTarget));
+                const dtSeconds = (Math.min(t + step, tTarget) - t) * 3600;
+                totalVolSeconds += 0.5 * (q1 + q2) * dtSeconds;
+            }
+
+            return totalVolSeconds; // in mÂ³
+        }
+
+        let hydroChart = null;
+
+        function initChart() {
+            const ctx = document.getElementById('hydrographCanvas').getContext('2d');
+            
+            // Build dense curve points for smooth rendering
+            const activeData = getActiveData();
+            const spline = createSpline(activeData);
+            const densePoints = [];
+            for (let t = 0; t <= 36; t += 0.2) {
+                densePoints.push({ x: Number(t.toFixed(1)), y: Number(spline(t).toFixed(2)) });
+            }
+
+            const dataPoints = activeData.map(d => ({ x: d.t, y: d.q }));
+
+            hydroChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [
+                        {
+                            label: 'Caudal Interpolado Q(t)',
+                            data: densePoints,
+                            borderColor: '#38bdf8',
+                            borderWidth: 3,
+                            fill: true,
+                            backgroundColor: 'rgba(56, 189, 248, 0.12)',
+                            tension: 0.4,
+                            pointRadius: 0
+                        },
+                        {
+                            label: 'Datos Observados',
+                            data: dataPoints,
+                            borderColor: '#f59e0b',
+                            backgroundColor: '#fbbf24',
+                            borderWidth: 0,
+                            pointRadius: 6,
+                            pointHoverRadius: 8,
+                            showLine: false
+                        },
+                        {
+                            label: 'Tiempo Actual (t)',
+                            data: [{ x: 0, y: spline(0) }],
+                            borderColor: '#ef4444',
+                            backgroundColor: '#ef4444',
+                            pointRadius: 7,
+                            pointStyle: 'rectRot',
+                            showLine: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'nearest',
+                        intersect: false
+                    },
+                    scales: {
+                        x: {
+                            type: 'linear',
+                            title: {
+                                display: true,
+                                text: 'Tiempo t (Horas)',
+                                color: '#94a3b8',
+                                font: { size: 11, weight: 'bold' }
+                            },
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { color: '#cbd5e1', stepSize: 6 },
+                            min: 0,
+                            max: 36
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Caudal Q (mÂ³/s)',
+                                color: '#94a3b8',
+                                font: { size: 11, weight: 'bold' }
+                            },
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { color: '#cbd5e1' }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#1e293b',
+                            titleColor: '#38bdf8',
+                            bodyColor: '#f8fafc',
+                            borderColor: '#334155',
+                            borderWidth: 1,
+                            callbacks: {
+                                label: function(context) {
+                                    return `Caudal: ${context.parsed.y.toFixed(2)} mÂ³/s en t = ${context.parsed.x} h`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateChartData() {
+            if (!hydroChart) return;
+            const activeData = getActiveData();
+            const spline = createSpline(activeData);
+
+            const densePoints = [];
+            for (let t = 0; t <= 36; t += 0.2) {
+                densePoints.push({ x: Number(t.toFixed(1)), y: Number(spline(t).toFixed(2)) });
+            }
+            const dataPoints = activeData.map(d => ({ x: d.t, y: d.q }));
+
+            hydroChart.data.datasets[0].data = densePoints;
+            hydroChart.data.datasets[1].data = dataPoints;
+            hydroChart.data.datasets[2].data = [{ x: currentTime, y: spline(currentTime) }];
+            hydroChart.update('none');
+        }
+
+        const simCanvas = document.getElementById('riverSimulationCanvas');
+        const simCtx = simCanvas.getContext('2d');
+
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < numParticles; i++) {
+                particles.push({
+                    x: Math.random(),
+                    y: Math.random(),
+                    size: Math.random() * 3 + 1.5,
+                    speedFactor: Math.random() * 0.5 + 0.75,
+                    opacity: Math.random() * 0.5 + 0.3
+                });
+            }
+        }
+
+        function resizeCanvas() {
+            const rect = simCanvas.getBoundingClientRect();
+            simCanvas.width = rect.width * window.devicePixelRatio;
+            simCanvas.height = rect.height * window.devicePixelRatio;
+            simCtx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        }
+
+        function drawRiverSimulation(Q, depth, velocity) {
+            const w = simCanvas.clientWidth;
+            const h = simCanvas.clientHeight;
+
+            simCtx.clearRect(0, 0, w, h);
+
+            // Channel Bed profile (Cross section cut)
+            const bedMarginLeft = w * 0.1;
+            const bedMarginRight = w * 0.9;
+            const bedBottom = h - 35;
+            const bedTop = 40;
+
+            // Compute depth visually (scale 0-6m depth to canvas pixels)
+            const maxDepthMeters = 6.0;
+            const pixelDepth = Math.min((depth / maxDepthMeters) * (bedBottom - bedTop - 30), bedBottom - bedTop - 10);
+            const waterSurfaceY = bedBottom - pixelDepth;
+
+            // Draw River Channel Cross-Section
+            simCtx.beginPath();
+            simCtx.moveTo(bedMarginLeft - 20, bedTop);
+            simCtx.lineTo(bedMarginLeft, bedBottom);
+            simCtx.lineTo(bedMarginRight, bedBottom);
+            simCtx.lineTo(bedMarginRight + 20, bedTop);
+            simCtx.lineTo(w, bedTop);
+            simCtx.lineTo(w, h);
+            simCtx.lineTo(0, h);
+            simCtx.lineTo(0, bedTop);
+            simCtx.closePath();
+
+            simCtx.fillStyle = '#1e293b';
+            simCtx.fill();
+            simCtx.strokeStyle = '#475569';
+            simCtx.lineWidth = 2;
+            simCtx.stroke();
+
+            // Draw Water Mass
+            const grad = simCtx.createLinearGradient(0, waterSurfaceY, 0, bedBottom);
+            grad.addColorStop(0, 'rgba(14, 165, 233, 0.85)');
+            grad.addColorStop(1, 'rgba(3, 105, 161, 0.95)');
+
+            simCtx.beginPath();
+            simCtx.moveTo(bedMarginLeft, bedBottom);
+            simCtx.lineTo(bedMarginLeft - (pixelDepth * 0.3), waterSurfaceY);
+            
+            // Dynamic Wave Effect on surface
+            const waveTime = Date.now() * 0.003 * (velocity / 2);
+            for (let x = bedMarginLeft - (pixelDepth * 0.3); x <= bedMarginRight + (pixelDepth * 0.3); x += 10) {
+                const waveY = waterSurfaceY + Math.sin(x * 0.05 + waveTime) * 2;
+                simCtx.lineTo(x, waveY);
+            }
+
+            simCtx.lineTo(bedMarginRight + (pixelDepth * 0.3), waterSurfaceY);
+            simCtx.lineTo(bedMarginRight, bedBottom);
+            simCtx.closePath();
+
+            simCtx.fillStyle = grad;
+            simCtx.fill();
+
+            // Draw Floating Particles / Flow Vectors
+            simCtx.save();
+            // Clip to water area
+            simCtx.clip();
+
+            particles.forEach(p => {
+                // Particle motion proportional to velocity V
+                p.x += (velocity * 0.002 * p.speedFactor);
+                if (p.x > 1.0) p.x = 0.0;
+
+                const px = bedMarginLeft + p.x * (bedMarginRight - bedMarginLeft);
+                const py = waterSurfaceY + p.y * (bedBottom - waterSurfaceY - 5);
+
+                simCtx.fillStyle = `rgba(224, 242, 254, ${p.opacity})`;
+                simCtx.beginPath();
+                simCtx.arc(px, py, p.size, 0, Math.PI * 2);
+                simCtx.fill();
+
+                // Small velocity streak line
+                simCtx.strokeStyle = `rgba(186, 230, 253, ${p.opacity * 0.6})`;
+                simCtx.lineWidth = 1;
+                simCtx.beginPath();
+                simCtx.moveTo(px, py);
+                simCtx.lineTo(px - velocity * 4 * p.speedFactor, py);
+                simCtx.stroke();
+            });
+
+            simCtx.restore();
+
+            // Draw Scale Gauge on left side
+            simCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            simCtx.lineWidth = 1;
+            simCtx.beginPath();
+            simCtx.moveTo(bedMarginLeft - 35, bedBottom);
+            simCtx.lineTo(bedMarginLeft - 35, bedBottom - (5 / maxDepthMeters) * (bedBottom - bedTop - 30));
+            simCtx.stroke();
+
+            simCtx.fillStyle = '#94a3b8';
+            simCtx.font = '10px Inter';
+            for (let m = 0; m <= 5; m++) {
+                const tickY = bedBottom - (m / maxDepthMeters) * (bedBottom - bedTop - 30);
+                simCtx.fillText(`${m}m`, bedMarginLeft - 58, tickY + 3);
+            }
+        }
+
+        function updateUI() {
+            const activeData = getActiveData();
+            const spline = createSpline(activeData);
+
+            // Instant Q
+            const qNow = spline(currentTime);
+            const depth = solveDepth(qNow, hydraulicParams.B, hydraulicParams.n, hydraulicParams.S);
+            const area = hydraulicParams.B * depth;
+            const perimeter = hydraulicParams.B + 2 * depth;
+            const velocity = qNow / area;
+
+            // Trend dQ/dt (approx numerical derivative)
+            const dtStep = 0.1;
+            const qPrev = spline(Math.max(0, currentTime - dtStep));
+            const dqdt = (qNow - qPrev) / dtStep; // mÂ³/s por hora
+
+            // Volume accumulated up to currentTime
+            const volM3 = calculateCumulativeVolume(currentTime);
+            const volHm3 = volM3 / 1e6;
+
+            // Update DOM Cards
+            document.getElementById('kpiQ').innerText = qNow.toFixed(2);
+            document.getElementById('kpiDepth').innerText = depth.toFixed(2);
+            document.getElementById('kpiVelocity').innerText = velocity.toFixed(2);
+            document.getElementById('kpiVolume').innerText = volHm3.toFixed(2);
+            document.getElementById('currentTimeDisplay').innerText = currentTime.toFixed(1) + ' h';
+            document.getElementById('timeSlider').value = currentTime;
+
+            // Trend Badge
+            const qTrendBadge = document.getElementById('qTrendBadge');
+            if (Math.abs(dqdt) < 0.5) {
+                qTrendBadge.className = "px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono";
+                qTrendBadge.innerHTML = `<i class="fa-solid fa-minus text-slate-400 mr-1"></i> Estacionario`;
+            } else if (dqdt > 0) {
+                qTrendBadge.className = "px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono border border-emerald-500/20";
+                qTrendBadge.innerHTML = `<i class="fa-solid fa-arrow-trend-up text-emerald-400 mr-1"></i>+${dqdt.toFixed(1)} mÂ³/sÂ·h`;
+            } else {
+                qTrendBadge.className = "px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 font-mono border border-amber-500/20";
+                qTrendBadge.innerHTML = `<i class="fa-solid fa-arrow-trend-down text-amber-400 mr-1"></i>${dqdt.toFixed(1)} mÂ³/sÂ·h`;
+            }
+
+            // Canvas Overlay Metrics
+            document.getElementById('canvasArea').innerText = `${area.toFixed(1)} mÂ²`;
+            document.getElementById('canvasPerimeter').innerText = `${perimeter.toFixed(1)} m`;
+
+            // Global Statistics
+            const qVals = activeData.map(d => d.q);
+            const qMin = Math.min(...qVals);
+            const qMax = Math.max(...qVals);
+            const qAvg = qVals.reduce((a, b) => a + b, 0) / qVals.length;
+            const totalVol36 = calculateCumulativeVolume(36) / 1e6;
+
+            document.getElementById('statQMin').innerText = `${qMin.toFixed(2)} mÂ³/s`;
+            document.getElementById('statQMax').innerText = `${qMax.toFixed(2)} mÂ³/s`;
+            document.getElementById('statQAvg').innerText = `${qAvg.toFixed(2)} mÂ³/s`;
+            document.getElementById('statVolTotal').innerText = `${totalVol36.toFixed(2)} HmÂ³`;
+
+            // Chart Indicator Update
+            if (hydroChart) {
+                hydroChart.data.datasets[2].data = [{ x: currentTime, y: qNow }];
+                hydroChart.update('none');
+            }
+
+            // Redraw River Canvas
+            drawRiverSimulation(qNow, depth, velocity);
+        }
+
+        function populateTable() {
+            const tbody = document.getElementById('dataTableBody');
+            tbody.innerHTML = '';
+
+            const activeData = getActiveData();
+            let cumVol = 0;
+            let sumQ = 0;
+
+            for (let i = 0; i < activeData.length; i++) {
+                const d = activeData[i];
+                sumQ += d.q;
+
+                let dtSec = 0;
+                let segVol = 0;
+
+                if (i > 0) {
+                    const prev = activeData[i - 1];
+                    const dtHours = d.t - prev.t;
+                    dtSec = dtHours * 3600;
+                    segVol = 0.5 * (prev.q + d.q) * dtSec; // Trapezoid
+                    cumVol += segVol;
+                }
+
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-800/40 transition";
+                tr.innerHTML = `
+                    <td class="p-3 font-bold text-white">${d.t.toFixed(0)} h</td>
+                    <td class="p-3 text-blue-400 font-bold">${d.q.toFixed(2)}</td>
+                    <td class="p-3 text-slate-400">${dtSec > 0 ? dtSec.toLocaleString() : '0'} s</td>
+                    <td class="p-3 text-slate-300">${segVol > 0 ? segVol.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'}</td>
+                    <td class="p-3 text-emerald-400 font-bold">${(cumVol / 1e6).toFixed(2)} HmÂ³</td>
+                `;
+                tbody.appendChild(tr);
+            }
+
+            const avgQ = sumQ / activeData.length;
+            const totalVol36m3 = calculateCumulativeVolume(36);
+            
+            document.getElementById('tableAvgQ').innerText = `${avgQ.toFixed(2)} mÂ³/s`;
+            document.getElementById('tableTotalM3').innerText = `${Math.round(totalVol36m3).toLocaleString()} mÂ³`;
+            document.getElementById('tableTotalHm3').innerText = `${(totalVol36m3 / 1e6).toFixed(2)} HmÂ³`;
+        }
+
+        function togglePlay() {
+            isPlaying = !isPlaying;
+            const playBtn = document.getElementById('playBtn');
+            const playIcon = document.getElementById('playIcon');
+            const playText = document.getElementById('playText');
+
+            if (isPlaying) {
+                playIcon.className = 'fa-solid fa-pause';
+                playText.innerText = 'Pausar';
+                playBtn.className = "px-5 py-2.5 bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white font-semibold rounded-xl transition flex items-center gap-2 shadow-lg shadow-amber-600/30";
+                animateLoop();
+            } else {
+                playIcon.className = 'fa-solid fa-play';
+                playText.innerText = 'Continuar';
+                playBtn.className = "px-5 py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold rounded-xl transition flex items-center gap-2 shadow-lg shadow-blue-600/30";
+                if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            }
+        }
+
+        function animateLoop() {
+            if (!isPlaying) return;
+
+            currentTime += 0.05;
+            if (currentTime > 36) {
+                currentTime = 0;
+            }
+
+            updateUI();
+            animationFrameId = requestAnimationFrame(animateLoop);
+        }
+
+        function setupEventListeners() {
+            document.getElementById('playBtn').addEventListener('click', togglePlay);
+
+            document.getElementById('resetBtn').addEventListener('click', () => {
+                isPlaying = false;
+                if (animationFrameId) cancelAnimationFrame(animationFrameId);
+                currentTime = 0;
+                document.getElementById('playIcon').className = 'fa-solid fa-play';
+                document.getElementById('playText').innerText = 'Iniciar SimulaciÃ³n';
+                document.getElementById('playBtn').className = "px-5 py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold rounded-xl transition flex items-center gap-2 shadow-lg shadow-blue-600/30";
+                updateUI();
+            });
+
+            document.getElementById('timeSlider').addEventListener('input', (e) => {
+                currentTime = parseFloat(e.target.value);
+                updateUI();
+            });
+
+            document.getElementById('scenarioSelect').addEventListener('change', (e) => {
+                currentScenario = e.target.value;
+                updateChartData();
+                populateTable();
+                updateUI();
+            });
+
+            // Hydraulic Sliders
+            document.getElementById('paramB').addEventListener('input', (e) => {
+                hydraulicParams.B = parseFloat(e.target.value);
+                document.getElementById('paramBVal').innerText = `${hydraulicParams.B} m`;
+                updateUI();
+            });
+
+            document.getElementById('paramN').addEventListener('input', (e) => {
+                hydraulicParams.n = parseFloat(e.target.value);
+                document.getElementById('paramNVal').innerText = hydraulicParams.n.toFixed(3);
+                updateUI();
+            });
+
+            document.getElementById('paramS').addEventListener('input', (e) => {
+                hydraulicParams.S = parseFloat(e.target.value);
+                document.getElementById('paramSVal').innerText = `${hydraulicParams.S.toFixed(4)} m/m`;
+                updateUI();
+            });
+
+            // CSV Export
+            document.getElementById('exportCsvBtn').addEventListener('click', () => {
+                const activeData = getActiveData();
+                let csvContent = "data:text/csv;charset=utf-8,Tiempo_h,Caudal_m3s\n";
+                activeData.forEach(d => {
+                    csvContent += `${d.t},${d.q.toFixed(2)}\n`;
+                });
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", "hidrograma_rio_cauca.csv");
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            });
+
+            window.addEventListener('resize', () => {
+                resizeCanvas();
+                updateUI();
+            });
+        }
+
+        window.onload = function () {
+            initParticles();
+            resizeCanvas();
+            initChart();
+            populateTable();
+            setupEventListeners();
+            updateUI();
+        };
+    </script>
+</body>
+</html>
